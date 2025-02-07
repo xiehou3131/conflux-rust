@@ -536,6 +536,125 @@ impl TransactionPool {
         (passed_transactions, failure)
     }
 
+    /// Try to insert `transactions` into transaction pool.
+    ///
+    /// If some tx is already in our tx_cache, it will be ignored and will not
+    /// be added to returned `passed_transactions`. If some tx invalid or
+    /// cannot be inserted to the tx pool, it will be included in the returned
+    /// `failure` and will not be propagated.
+    pub fn insert_new_transactions_with_address_check(
+        &self, mut transactions: Vec<TransactionWithSignature>,
+    ) -> (
+        Vec<Arc<SignedTransaction>>,
+        HashMap<H256, TransactionPoolError>,
+    ) {
+        INSERT_TPS.mark(1);
+        INSERT_TXS_TPS.mark(transactions.len());
+        let _timer = MeterTimer::time_func(TX_POOL_INSERT_TIMER.as_ref());
+
+        let mut passed_transactions = Vec::new();
+        let mut failure = HashMap::new();
+        let current_best_info = self.consensus_best_info.lock().clone();
+
+        let (chain_id, best_height, best_block_number) = {
+            (
+                current_best_info.best_chain_id(),
+                current_best_info.best_epoch_number,
+                current_best_info.best_block_number,
+            )
+        };
+        // FIXME: Needs further discussion here, some transactions may be valid
+        // and invalid back and forth does this matters? But for the epoch
+        // height check, it may also become valid and invalid back and forth.
+        let vm_spec = self.machine.spec(best_block_number, best_height);
+        let transitions = &self.machine.params().transition_heights;
+
+        // filter out invalid transactions.
+        let mut index = 0;
+        while let Some(tx) = transactions.get(index) {
+            match self.verify_transaction_tx_pool(
+                tx,
+                /* basic_check = */ true,
+                chain_id,
+                best_height,
+                transitions,
+                &vm_spec,
+            ) {
+                Ok(_) => index += 1,
+                Err(e) => {
+                    let removed = transactions.swap_remove(index);
+                    debug!("failed to insert tx into pool (validation failed), hash = {:?}, error = {:?}", removed.hash, e);
+                    failure.insert(removed.hash, e);
+                }
+            }
+        }
+
+        if transactions.is_empty() {
+            INSERT_TXS_SUCCESS_TPS.mark(passed_transactions.len());
+            INSERT_TXS_FAILURE_TPS.mark(failure.len());
+            return (passed_transactions, failure);
+        }
+
+        // Recover public key and insert into pool with readiness check.
+        // Note, the workload of recovering public key is very heavy, especially
+        // in case of high TPS (e.g. > 8000). So, it's better to recover public
+        // key after basic verification.
+        match self.data_man.recover_unsigned_tx(&transactions) {
+            Ok(signed_trans) => {
+                let account_cache = self.get_best_state_account_cache();
+                let mut inner =
+                    self.inner.write_with_metric(&INSERT_TXS_ENQUEUE_LOCK);
+                let mut to_prop = self.to_propagate_trans.write();
+
+                for tx in signed_trans {
+                    if inner.get(&tx.hash).is_some() {
+                        continue;
+                    }
+
+                    if let Err(e) = self.add_transaction_with_readiness_check_with_address_check(
+                        &mut *inner,
+                        &account_cache,
+                        tx.clone(),
+                        false,
+                        false,
+                    ) {
+                        debug!(
+                            "tx {:?} fails to be inserted to pool, err={:?}",
+                            &tx.hash, e
+                        );
+                        failure.insert(tx.hash(), e);
+                        continue;
+                    }
+
+                    passed_transactions.push(tx.clone());
+                    if to_prop.len() < inner.capacity() {
+                        to_prop.entry(tx.hash).or_insert(tx);
+                    }
+                }
+            }
+            Err(e) => {
+                for tx in transactions {
+                    failure.insert(
+                        tx.hash(),
+                        TransactionPoolError::RlpDecodeError(format!(
+                            "{:?}",
+                            e
+                        )),
+                    );
+                }
+            }
+        }
+
+        TX_POOL_DEFERRED_GAUGE.update(self.total_deferred(None));
+        TX_POOL_UNPACKED_GAUGE.update(self.total_unpacked());
+        TX_POOL_READY_GAUGE.update(self.total_ready_accounts());
+
+        INSERT_TXS_SUCCESS_TPS.mark(passed_transactions.len());
+        INSERT_TXS_FAILURE_TPS.mark(failure.len());
+
+        (passed_transactions, failure)
+    }
+
     /// Try to insert `signed_transaction` into transaction pool.
     ///
     /// If some tx is already in our tx_cache, it will be ignored and will not
@@ -695,6 +814,21 @@ impl TransactionPool {
         transaction: Arc<SignedTransaction>, packed: bool, force: bool,
     ) -> Result<(), TransactionPoolError> {
         inner.insert_transaction_with_readiness_check(
+            account_cache,
+            transaction,
+            packed,
+            force,
+        )
+    }
+
+    // Add transaction into deferred pool and maintain its readiness
+    // the packed tag provided
+    // if force tag is true, the replacement in nonce pool must be happened
+    pub fn add_transaction_with_readiness_check_with_address_check(
+        &self, inner: &mut TransactionPoolInner, account_cache: &AccountCache,
+        transaction: Arc<SignedTransaction>, packed: bool, force: bool,
+    ) -> Result<(), TransactionPoolError> {
+        inner.insert_transaction_with_readiness_check_with_address_check(
             account_cache,
             transaction,
             packed,
