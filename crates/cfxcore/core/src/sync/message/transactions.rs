@@ -567,7 +567,7 @@ impl Handleable for GetTransactionsResponse {
     fn handle(self, ctx: &Context) -> Result<(), Error> {
         let _timer = MeterTimer::time_func(TX_HANDLE_TIMER.as_ref());
 
-        info!("on_get_transactions_response {:?}", self.request_id);
+        debug!("on_get_transactions_response {:?}", self.request_id);
 
         let req = ctx.match_request(self.request_id)?;
         let req = req.downcast_ref::<GetTransactions>(
@@ -577,7 +577,7 @@ impl Handleable for GetTransactionsResponse {
 
         // FIXME: Do some check based on transaction request.
 
-        info!(
+        debug!(
             "Received {:?} transactions and {:?} tx hashes from Peer {:?}",
             self.transactions.len(),
             self.tx_hashes.len(),
