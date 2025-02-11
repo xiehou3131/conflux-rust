@@ -177,6 +177,7 @@ impl ReceivedTransactionContainer {
 
         for transaction in transactions {
             let tx_hash = transaction.hash();
+            debug!("append_received_transactions {:?}", tx_hash);
             let short_id = TransactionDigests::to_u24(
                 tx_hash[29],
                 tx_hash[30],
