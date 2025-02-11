@@ -235,6 +235,7 @@ impl Message for GetTransactionsFromTxHashesResponse {
 pub fn handle_rlp_message(
     id: MsgId, ctx: &Context, rlp: &Rlp,
 ) -> Result<bool, Error> {
+    debug!("handle_rlp_message {:?}", id);
     match id {
         msgid::STATUS_V2 => handle_message::<StatusV2>(ctx, rlp)?,
         msgid::STATUS_V3 => handle_message::<StatusV3>(ctx, rlp)?,
