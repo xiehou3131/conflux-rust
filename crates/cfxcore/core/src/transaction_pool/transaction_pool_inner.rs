@@ -32,7 +32,7 @@ use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 use rlp::*;
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -79,6 +79,8 @@ struct DeferredPool {
     /// Store transactions that are ready to be packed for each address, and
     /// implements random sampling logic.
     packing_pool: SpaceMap<PackingPool<Arc<SignedTransaction>>>,
+    /// keep a transaction_hash - transaction_gas_price map, sorted by gas price
+    gas_map: BTreeMap<H256, U256>,
 }
 
 impl DeferredPool {
@@ -1511,6 +1513,14 @@ impl TransactionPoolInner {
         info!(
             "address check insert transaction, nonce = {}, sender = {:?}, hash = {:?} gas = {}, gas_price = {}, gas_limit = {}.",
             &transaction.nonce(), &transaction.sender(), &transaction.hash(), &transaction.gas(), &transaction.gas_price(), &transaction.gas_limit());
+
+        match transaction.unsigned {
+            Transaction::Native(ref utx) => {
+            }
+            Transaction::Ethereum(ref utx) => {
+                let hash = 
+            }
+        }
 
         let result = self.insert_transaction_without_readiness_check(
             transaction.clone(),
