@@ -618,6 +618,10 @@ impl TransactionPoolInner {
 
     pub fn print_info(&self) {
         debug!("gas_price_map: {:#?}", self.deferred_pool.gas_price_map);
+        debug!("gas_price_vec: {:#?}", self.deferred_pool.gas_price_sorted_vec);
+        for tx in self.deferred_pool.packing_pool.in_space(Space::Ethereum).iter() {
+            debug!("packing_txn: {:#?}", tx);
+        }
     }
 
     pub fn clear(&mut self) {
