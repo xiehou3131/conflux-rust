@@ -32,7 +32,7 @@ use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 use rlp::*;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -65,6 +65,24 @@ lazy_static! {
         register_meter_with_group("txpool", "gc_txs_tps");
 }
 
+fn sorted_insert<T: Ord>(vec: &mut Vec<T>, value: T) {
+    let idx = match vec.binary_search(&value) {
+        Ok(pos) => pos,
+        Err(pos) => pos,
+    };
+
+    vec.insert(idx, value);
+}
+
+fn sorted_remove<T: Ord>(vec: &mut Vec<T>, value: T) {
+    let idx = match vec.binary_search(&value) {
+        Ok(pos) => pos,
+        Err(pos) => pos,
+    };
+
+    vec.remove(idx);
+}
+
 /// The `DeferredPool` is designed to organize transactions for each address
 /// based on their nonce. It efficiently maintains and queries transactions even
 /// when received nonces are non-sequential. In addition, it calculates
@@ -79,8 +97,10 @@ struct DeferredPool {
     /// Store transactions that are ready to be packed for each address, and
     /// implements random sampling logic.
     packing_pool: SpaceMap<PackingPool<Arc<SignedTransaction>>>,
-    /// keep a transaction_hash - transaction_gas_price map, sorted by gas price
-    gas_map: BTreeMap<H256, U256>,
+    /// keep a transaction_hash - transaction_gas_price map
+    gas_price_map: HashMap<H256, U256>,
+    /// gas_price sorted vec
+    gas_price_sorted_vec: Vec<U256>,
 }
 
 impl DeferredPool {
@@ -91,6 +111,8 @@ impl DeferredPool {
                 PackingPool::new(config),
                 PackingPool::new(config),
             ),
+            gas_price_map: Default::default(),
+            gas_price_sorted_vec: Default::default(),
         }
     }
 
@@ -103,6 +125,8 @@ impl DeferredPool {
                 PackingPool::new(config),
                 PackingPool::new(config),
             ),
+            gas_price_map: Default::default(),
+            gas_price_sorted_vec: Default::default(),
         }
     }
 
@@ -250,6 +274,20 @@ impl DeferredPool {
                 .in_space_mut(tx.space())
                 .split_off_suffix(tx.sender(), tx.nonce());
         }
+        if let Space::Ethereum = tx.space() {
+            let hash = tx.hash();
+            let gas_price = *tx.gas_price();
+            if let Some(value) = self.gas_price_map.get(&hash) {
+                if gas_price > *value {
+                    self.gas_price_map.insert(hash, gas_price);
+                    sorted_remove(& mut self.gas_price_sorted_vec, gas_price);
+                    sorted_insert(& mut self.gas_price_sorted_vec, gas_price);
+                }
+            } else {
+                self.gas_price_map.insert(hash, gas_price);
+                sorted_insert(& mut self.gas_price_sorted_vec, gas_price);
+            }
+        }     
         res
     }
 
@@ -577,6 +615,10 @@ impl TransactionPoolInner {
 
     #[cfg(test)]
     pub fn new_for_test() -> Self { Self::new(50_000, 3_000_000, 50, 4) }
+
+    pub fn print_info(&self) {
+        debug!("gas_price_map: {:#?}", self.deferred_pool.gas_price_map);
+    }
 
     pub fn clear(&mut self) {
         self.deferred_pool.clear();
@@ -1513,14 +1555,6 @@ impl TransactionPoolInner {
         info!(
             "address check insert transaction, nonce = {}, sender = {:?}, hash = {:?} gas = {}, gas_price = {}, gas_limit = {}.",
             &transaction.nonce(), &transaction.sender(), &transaction.hash(), &transaction.gas(), &transaction.gas_price(), &transaction.gas_limit());
-
-        match transaction.unsigned {
-            Transaction::Native(ref utx) => {
-            }
-            Transaction::Ethereum(ref utx) => {
-                let hash = 
-            }
-        }
 
         let result = self.insert_transaction_without_readiness_check(
             transaction.clone(),
