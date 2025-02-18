@@ -667,14 +667,14 @@ impl TransactionPool {
         Vec<Arc<SignedTransaction>>,
         HashMap<H256, TransactionPoolError>,
     ) {
-        {
-            let mut inner =
-                self.inner.write_with_metric(&INSERT_TXS_ENQUEUE_LOCK);
-            let inner_ref = &mut *inner;
-            inner_ref.print_info();
+        // {
+        //     let mut inner =
+        //         self.inner.write_with_metric(&INSERT_TXS_ENQUEUE_LOCK);
+        //     let inner_ref = &mut *inner;
+        //     // inner_ref.print_info();
 
-            debug!("new_signed_transactions: {:#?}", signed_transactions);
-        }
+        //     // debug!("new_signed_transactions: {:#?}", signed_transactions);
+        // }
 
         INSERT_TPS.mark(1);
         INSERT_TXS_TPS.mark(signed_transactions.len());
