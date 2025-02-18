@@ -11,6 +11,7 @@ use super::{
     transaction::PackingPoolTransaction, treapmap_config::PackingPoolMap,
 };
 use cfx_types::U256;
+use log::debug;
 use malloc_size_of::MallocSizeOf;
 use primitives::block_header::{compute_next_price, estimate_max_possible_gas};
 use rand::RngCore;
@@ -115,6 +116,7 @@ impl<TX: PackingPoolTransaction> PackingPool<TX> {
     fn split_off(
         &mut self, sender: TX::Sender, start_nonce: &U256, keep_prefix: bool,
     ) -> Vec<TX> {
+        debug!("sender: {:#?}, start_nonce: {} , keep_prefix: {}", sender, start_nonce, keep_prefix);
         let config = &self.config;
         let update = move |node: &mut Node<PackingPoolMap<TX>>| {
             let old_info = node.value.pack_info();
