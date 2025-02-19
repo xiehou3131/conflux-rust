@@ -264,6 +264,8 @@ impl DeferredPool {
             .entry(tx.sender())
             .or_insert_with(|| NoncePool::new());
 
+        debug!("deferred pool insert: {:#?}", tx);
+
         let res = bucket.insert(&tx, force);
         if matches!(res, InsertResult::Updated(_)) {
             // The transactions in the packing_pool must be consistent with the
@@ -417,6 +419,9 @@ impl DeferredPool {
                 if tx.nonce() > &last_valid_nonce {
                     break;
                 }
+
+                debug!("packing_pool insert: {:#?}", tx.transaction);
+
                 let (_, res) = self
                     .packing_pool
                     .in_space_mut(addr.space)

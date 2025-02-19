@@ -55,9 +55,12 @@ impl<TX: PackingPoolTransaction> PackingPool<TX> {
 
     #[inline]
     pub fn insert(&mut self, tx: TX) -> (Vec<TX>, Result<(), InsertError>) {
+        
         let config = &self.config;
         let tx_clone = tx.clone();
         let sender = tx.sender();
+
+        debug!("inner insert: {:#?}", sender);
 
         let update = move |node: &mut Node<PackingPoolMap<TX>>| -> Result<_, Infallible> {
             let old_info = node.value.pack_info();
