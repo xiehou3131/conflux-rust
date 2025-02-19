@@ -548,6 +548,14 @@ impl TransactionPool {
         Vec<Arc<SignedTransaction>>,
         HashMap<H256, TransactionPoolError>,
     ) {
+        {
+            let mut inner =
+                self.inner.write_with_metric(&INSERT_TXS_ENQUEUE_LOCK);
+            let inner_ref = &mut *inner;
+            debug!("before insert new pending transactions");
+            inner_ref.print_info();
+        }
+
         INSERT_TPS.mark(1);
         INSERT_TXS_TPS.mark(transactions.len());
         let _timer = MeterTimer::time_func(TX_POOL_INSERT_TIMER.as_ref());
@@ -652,6 +660,14 @@ impl TransactionPool {
         INSERT_TXS_SUCCESS_TPS.mark(passed_transactions.len());
         INSERT_TXS_FAILURE_TPS.mark(failure.len());
 
+        {
+            let mut inner =
+                self.inner.write_with_metric(&INSERT_TXS_ENQUEUE_LOCK);
+            let inner_ref = &mut *inner;
+            debug!("after insert new pending transactions");
+            inner_ref.print_info();
+        }
+
         (passed_transactions, failure)
     }
 
@@ -671,6 +687,7 @@ impl TransactionPool {
             let mut inner =
                 self.inner.write_with_metric(&INSERT_TXS_ENQUEUE_LOCK);
             let inner_ref = &mut *inner;
+            debug!("before insert new signed transactions");
             inner_ref.print_info();
         }
 
@@ -777,6 +794,7 @@ impl TransactionPool {
             let mut inner =
                 self.inner.write_with_metric(&INSERT_TXS_ENQUEUE_LOCK);
             let inner_ref = &mut *inner;
+            debug!("after insert new signed transactions");
             inner_ref.print_info();
         }
 
