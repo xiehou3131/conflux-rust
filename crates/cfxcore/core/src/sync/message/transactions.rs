@@ -595,7 +595,7 @@ impl Handleable for GetTransactionsResponse {
                 .graph
                 .consensus
                 .get_tx_pool()
-                .insert_new_transactions_with_address_check(self.transactions);
+                .insert_new_pending_transactions(self.transactions);
             if failure.is_empty() {
                 debug!(
                     "Transactions successfully inserted to transaction pool"

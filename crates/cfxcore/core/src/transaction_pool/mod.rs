@@ -542,7 +542,7 @@ impl TransactionPool {
     /// be added to returned `passed_transactions`. If some tx invalid or
     /// cannot be inserted to the tx pool, it will be included in the returned
     /// `failure` and will not be propagated.
-    pub fn insert_new_transactions_with_address_check(
+    pub fn insert_new_pending_transactions(
         &self, mut transactions: Vec<TransactionWithSignature>,
     ) -> (
         Vec<Arc<SignedTransaction>>,
@@ -611,7 +611,7 @@ impl TransactionPool {
                         continue;
                     }
 
-                    if let Err(e) = self.add_transaction_with_readiness_check_with_address_check(
+                    if let Err(e) = self.add_pending_transaction_with_readiness_check(
                         &mut *inner,
                         &account_cache,
                         tx.clone(),
@@ -667,14 +667,12 @@ impl TransactionPool {
         Vec<Arc<SignedTransaction>>,
         HashMap<H256, TransactionPoolError>,
     ) {
-        // {
-        //     let mut inner =
-        //         self.inner.write_with_metric(&INSERT_TXS_ENQUEUE_LOCK);
-        //     let inner_ref = &mut *inner;
-        //     // inner_ref.print_info();
-
-        //     // debug!("new_signed_transactions: {:#?}", signed_transactions);
-        // }
+        {
+            let mut inner =
+                self.inner.write_with_metric(&INSERT_TXS_ENQUEUE_LOCK);
+            let inner_ref = &mut *inner;
+            inner_ref.print_info();
+        }
 
         INSERT_TPS.mark(1);
         INSERT_TXS_TPS.mark(signed_transactions.len());
@@ -775,6 +773,13 @@ impl TransactionPool {
         INSERT_TXS_SUCCESS_TPS.mark(passed_transactions.len());
         INSERT_TXS_FAILURE_TPS.mark(failure.len());
 
+        {
+            let mut inner =
+                self.inner.write_with_metric(&INSERT_TXS_ENQUEUE_LOCK);
+            let inner_ref = &mut *inner;
+            inner_ref.print_info();
+        }
+
         (passed_transactions, failure)
     }
 
@@ -833,11 +838,11 @@ impl TransactionPool {
     // Add transaction into deferred pool and maintain its readiness
     // the packed tag provided
     // if force tag is true, the replacement in nonce pool must be happened
-    pub fn add_transaction_with_readiness_check_with_address_check(
+    pub fn add_pending_transaction_with_readiness_check(
         &self, inner: &mut TransactionPoolInner, account_cache: &AccountCache,
         transaction: Arc<SignedTransaction>, packed: bool, force: bool,
     ) -> Result<(), TransactionPoolError> {
-        inner.insert_transaction_with_readiness_check_with_address_check(
+        inner.insert_pending_transaction_with_readiness_check(
             account_cache,
             transaction,
             packed,

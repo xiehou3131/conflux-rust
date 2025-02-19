@@ -264,7 +264,24 @@ impl DeferredPool {
             .entry(tx.sender())
             .or_insert_with(|| NoncePool::new());
 
-        debug!("deferred pool insert: {:#?}", tx);
+        let res = bucket.insert(&tx, force);
+        if matches!(res, InsertResult::Updated(_)) {
+            // The transactions in the packing_pool must be consistent with the
+            // nonce pool. However, the replaced transactions have not undergone
+            // a readiness check, so we will temporarily remove them from the
+            // packing_pool.
+            self.packing_pool
+                .in_space_mut(tx.space())
+                .split_off_suffix(tx.sender(), tx.nonce());
+        }
+        res
+    }
+
+    fn insert_pending(&mut self, tx: TxWithReadyInfo, force: bool) -> InsertResult {
+        let bucket = self
+            .buckets
+            .entry(tx.sender())
+            .or_insert_with(|| NoncePool::new());
 
         let res = bucket.insert(&tx, force);
         if matches!(res, InsertResult::Updated(_)) {
@@ -622,8 +639,6 @@ impl TransactionPoolInner {
     pub fn new_for_test() -> Self { Self::new(50_000, 3_000_000, 50, 4) }
 
     pub fn print_info(&self) {
-        debug!("gas_price_map: {:#?}", self.deferred_pool.gas_price_map);
-        debug!("gas_price_vec: {:#?}", self.deferred_pool.gas_price_sorted_vec);
         for tx in self.deferred_pool.packing_pool.in_space(Space::Ethereum).iter() {
             debug!("packing_txn: {:#?}", tx);
         }
@@ -868,6 +883,74 @@ impl TransactionPoolInner {
             let _timer =
                 MeterTimer::time_func(DEFERRED_POOL_INNER_INSERT.as_ref());
             self.deferred_pool.insert(
+                TxWithReadyInfo::new(
+                    transaction.clone(),
+                    packed,
+                    sponsored_gas,
+                    sponsored_storage,
+                ),
+                force,
+            )
+        };
+
+        match &result {
+            InsertResult::NewAdded => {
+                let (state_nonce, state_balance) = state_nonce_and_balance;
+                self.update_nonce_and_balance(
+                    &transaction.sender(),
+                    state_nonce,
+                    state_balance,
+                );
+                // GarbageCollector will be updated by the caller.
+                self.txs.insert(transaction.hash(), transaction.clone());
+                if !packed {
+                    self.unpacked_transaction_count += 1;
+                }
+            }
+            InsertResult::Failed(_) => {}
+            InsertResult::Updated(replaced_tx) => {
+                if !replaced_tx.is_already_packed() {
+                    self.unpacked_transaction_count = self
+                        .unpacked_transaction_count
+                        .checked_sub(1)
+                        .unwrap_or_else(|| {
+                            error!("unpacked_transaction_count under-flows.");
+                            0
+                        });
+                }
+                self.txs.remove(&replaced_tx.hash());
+                self.txs.insert(transaction.hash(), transaction.clone());
+                if !packed {
+                    self.unpacked_transaction_count += 1;
+                }
+            }
+        }
+
+        result
+    }
+
+    // the new inserting will fail if tx_pool is full (even if `force` is true)
+    fn insert_pending_transaction_without_readiness_check(
+        &mut self, transaction: Arc<SignedTransaction>, packed: bool,
+        force: bool, state_nonce_and_balance: (U256, U256),
+        (sponsored_gas, sponsored_storage): (U256, u64),
+    ) -> InsertResult {
+        let _timer = MeterTimer::time_func(
+            TX_POOL_INNER_WITHOUTCHECK_INSERT_TIMER.as_ref(),
+        );
+        if !self.deferred_pool.check_sender_and_nonce_exists(
+            &transaction.sender(),
+            &transaction.nonce(),
+        ) {
+            self.collect_garbage(transaction.as_ref());
+            if self.is_full(transaction.space()) {
+                return InsertResult::Failed(TransactionPoolError::TxPoolFull);
+            }
+        }
+        let result = {
+            let _timer =
+                MeterTimer::time_func(DEFERRED_POOL_INNER_INSERT.as_ref());
+            self.deferred_pool.insert_pending(
                 TxWithReadyInfo::new(
                     transaction.clone(),
                     packed,
@@ -1479,7 +1562,7 @@ impl TransactionPoolInner {
     // Add transaction into deferred pool and maintain its readiness
     // the packed tag provided
     // if force tag is true, the replacement in nonce pool must be happened
-    pub fn insert_transaction_with_readiness_check_with_address_check(
+    pub fn insert_pending_transaction_with_readiness_check(
         &mut self, account_cache: &AccountCache,
         transaction: Arc<SignedTransaction>, packed: bool, force: bool,
     ) -> Result<(), TransactionPoolError> {
@@ -1565,7 +1648,7 @@ impl TransactionPoolInner {
             "address check insert transaction, nonce = {}, sender = {:?}, hash = {:?} gas = {}, gas_price = {}, gas_limit = {}.",
             &transaction.nonce(), &transaction.sender(), &transaction.hash(), &transaction.gas(), &transaction.gas_price(), &transaction.gas_limit());
 
-        let result = self.insert_transaction_without_readiness_check(
+        let result = self.insert_pending_transaction_without_readiness_check(
             transaction.clone(),
             packed,
             force,
