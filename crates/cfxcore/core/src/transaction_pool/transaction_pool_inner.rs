@@ -17,7 +17,7 @@ use cfx_parameters::{
 pub use cfx_rpc_cfx_types::{PendingReason, TransactionStatus};
 use cfx_statedb::Result as StateDbResult;
 use cfx_types::{
-    address_util::AddressUtil, AddressWithSpace, Space, SpaceMap, H160, H256, U128, U256, U512
+    address_util::AddressUtil, AddressWithSpace, Space, SpaceMap, H256, U128, U256, U512
 };
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;
 use metrics::{
@@ -64,13 +64,15 @@ lazy_static! {
         register_meter_with_group("txpool", "gc_txs_tps");
 }
 
-fn sorted_insert<T: Ord>(vec: &mut Vec<T>, value: T) {
+fn sorted_insert<T: Ord>(vec: &mut Vec<T>, value: T) -> usize {
     let idx = match vec.binary_search(&value) {
         Ok(pos) => pos,
         Err(pos) => pos,
     };
 
     vec.insert(idx, value);
+
+    idx
 }
 
 fn sorted_remove<T: Ord>(vec: &mut Vec<T>, value: T) {
@@ -102,6 +104,8 @@ struct DeferredPool {
     gas_price_sorted_vec: Vec<U256>,
     /// arbitrage trade poxy address
     arb_proxy_address: AddressWithSpace,
+    /// current gas price of arbitrage trade poxy address
+    arb_proxy_gas_price: U256,
 }
 
 impl DeferredPool {
@@ -119,6 +123,7 @@ impl DeferredPool {
                 address: str_arb_proxy_address.parse().unwrap(),
                 space: Space::Ethereum,
             },
+            arb_proxy_gas_price: U256::from(0),
         }
     }
 
@@ -138,6 +143,7 @@ impl DeferredPool {
                 address: str_arb_proxy_address.parse().unwrap(),
                 space: Space::Ethereum,
             },
+            arb_proxy_gas_price: U256::from(0),
         }
     }
 
@@ -308,28 +314,41 @@ impl DeferredPool {
             debug!("arb proxy address: {:#?}", self.arb_proxy_address);
 
             let address = tx.sender();
-            if address == self.arb_proxy_address {
-                debug!("same!!!");
-            }
-            else {
-                debug!("different!!!");
-            }
-
             let hash = tx.hash();
             let gas_price = *tx.gas_price();
+            let mut idx: Option<usize> = None;
             if let Some(value) = self.gas_price_map.get(&hash) {
                 if gas_price > *value {
                     self.gas_price_map.insert(hash, gas_price);
                     sorted_remove(& mut self.gas_price_sorted_vec, gas_price);
-                    sorted_insert(& mut self.gas_price_sorted_vec, gas_price);
+                    idx = Some(sorted_insert(& mut self.gas_price_sorted_vec, gas_price));
                 }
             } else {
                 self.gas_price_map.insert(hash, gas_price);
-                sorted_insert(& mut self.gas_price_sorted_vec, gas_price);
+                idx = Some(sorted_insert(& mut self.gas_price_sorted_vec, gas_price));
+            }
+
+            // if a new transaction has been inserted, chech whether we need to raise the gas price and resend a transaction
+            if let Some(value) = idx {
+                if address == self.arb_proxy_address {
+                    // the new transaction is send by arbitrage proxy address, simply update the gas price
+                    self.arb_proxy_gas_price = gas_price;
+                }
+                else {
+                    debug!("{}", value);
+                }
             }
         }     
         res
     }
+
+    // fn sync_gas_price_map_with_packing_pool(&mut self) {
+    //     for txs in self.packing_pool.in_space(Space::Ethereum).iter() {
+    //         for tx in txs.iter() {
+
+    //         }
+    //     }
+    // }
 
     fn mark_packed(
         &mut self, addr: AddressWithSpace, nonce: &U256, packed: bool,
@@ -1685,6 +1704,12 @@ impl TransactionPoolInner {
 
         Ok(())
     }
+
+    // pub fn update_gas_price_map_with_new_best_info(
+    //     &mut self
+    // ) {
+
+    // }
 
     fn estimated_gas_fee(gas: U256, gas_price: U256) -> U256 {
         let estimated_gas_u512 = gas.full_mul(gas_price);

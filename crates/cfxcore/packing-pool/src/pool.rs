@@ -11,7 +11,6 @@ use super::{
     transaction::PackingPoolTransaction, treapmap_config::PackingPoolMap,
 };
 use cfx_types::U256;
-use log::debug;
 use malloc_size_of::MallocSizeOf;
 use primitives::block_header::{compute_next_price, estimate_max_possible_gas};
 use rand::RngCore;
