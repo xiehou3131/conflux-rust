@@ -55,12 +55,9 @@ impl<TX: PackingPoolTransaction> PackingPool<TX> {
 
     #[inline]
     pub fn insert(&mut self, tx: TX) -> (Vec<TX>, Result<(), InsertError>) {
-        
         let config = &self.config;
         let tx_clone = tx.clone();
         let sender = tx.sender();
-
-        debug!("inner insert: {:#?}", sender);
 
         let update = move |node: &mut Node<PackingPoolMap<TX>>| -> Result<_, Infallible> {
             let old_info = node.value.pack_info();
@@ -119,7 +116,6 @@ impl<TX: PackingPoolTransaction> PackingPool<TX> {
     fn split_off(
         &mut self, sender: TX::Sender, start_nonce: &U256, keep_prefix: bool,
     ) -> Vec<TX> {
-        debug!("sender: {:#?}, start_nonce: {} , keep_prefix: {}", sender, start_nonce, keep_prefix);
         let config = &self.config;
         let update = move |node: &mut Node<PackingPoolMap<TX>>| {
             let old_info = node.value.pack_info();

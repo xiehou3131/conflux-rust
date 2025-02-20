@@ -1077,9 +1077,6 @@ impl TransactionPool {
         let mut inner = self.inner.write_with_metric(&NOTIFY_BEST_INFO_LOCK);
         let inner = inner.deref_mut();
 
-        debug!("before notify new best info");
-        inner.print_info();
-
         while let Some(tx) = set_tx_buffer.pop() {
             let tx_hash = tx.hash();
             if let Err(e) = self.add_transaction_with_readiness_check(
@@ -1141,9 +1138,6 @@ impl TransactionPool {
             "notify_new_best_info: {:?}",
             self.consensus_best_info.lock()
         );
-
-        debug!("after notify new best info");
-        inner.print_info();
 
         Ok(())
     }

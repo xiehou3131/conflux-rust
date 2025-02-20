@@ -17,8 +17,7 @@ use cfx_parameters::{
 pub use cfx_rpc_cfx_types::{PendingReason, TransactionStatus};
 use cfx_statedb::Result as StateDbResult;
 use cfx_types::{
-    address_util::AddressUtil, AddressWithSpace, Space, SpaceMap, H256, U128,
-    U256, U512,
+    address_util::AddressUtil, AddressWithSpace, Space, SpaceMap, H160, H256, U128, U256, U512
 };
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;
 use metrics::{
@@ -101,10 +100,13 @@ struct DeferredPool {
     gas_price_map: HashMap<H256, U256>,
     /// gas_price sorted vec
     gas_price_sorted_vec: Vec<U256>,
+    /// arbitrage trade poxy address
+    arb_proxy_address: AddressWithSpace,
 }
 
 impl DeferredPool {
     fn new(config: PackingPoolConfig) -> Self {
+        let str_arb_proxy_address: &str = "d937Cb115Ca11d2E7c77909A6e8266bfe738C887";
         DeferredPool {
             buckets: Default::default(),
             packing_pool: SpaceMap::new(
@@ -113,12 +115,17 @@ impl DeferredPool {
             ),
             gas_price_map: Default::default(),
             gas_price_sorted_vec: Default::default(),
+            arb_proxy_address: AddressWithSpace {
+                address: str_arb_proxy_address.parse().unwrap(),
+                space: Space::Ethereum,
+            },
         }
     }
 
     #[cfg(test)]
     fn new_for_test() -> Self {
         let config = PackingPoolConfig::new(3_000_000.into(), 20, 4);
+        let str_arb_proxy_address: &str = "d937Cb115Ca11d2E7c77909A6e8266bfe738C887";
         DeferredPool {
             buckets: Default::default(),
             packing_pool: SpaceMap::new(
@@ -127,6 +134,10 @@ impl DeferredPool {
             ),
             gas_price_map: Default::default(),
             gas_price_sorted_vec: Default::default(),
+            arb_proxy_address: AddressWithSpace {
+                address: str_arb_proxy_address.parse().unwrap(),
+                space: Space::Ethereum,
+            },
         }
     }
 
@@ -294,6 +305,16 @@ impl DeferredPool {
                 .split_off_suffix(tx.sender(), tx.nonce());
         }
         if let Space::Ethereum = tx.space() {
+            debug!("arb proxy address: {:#?}", self.arb_proxy_address);
+
+            let address = tx.sender();
+            if address == self.arb_proxy_address {
+                debug!("same!!!");
+            }
+            else {
+                debug!("different!!!");
+            }
+
             let hash = tx.hash();
             let gas_price = *tx.gas_price();
             if let Some(value) = self.gas_price_map.get(&hash) {
@@ -436,8 +457,6 @@ impl DeferredPool {
                 if tx.nonce() > &last_valid_nonce {
                     break;
                 }
-
-                debug!("packing_pool insert: {:#?}", tx.transaction);
 
                 let (_, res) = self
                     .packing_pool
@@ -638,11 +657,11 @@ impl TransactionPoolInner {
     #[cfg(test)]
     pub fn new_for_test() -> Self { Self::new(50_000, 3_000_000, 50, 4) }
 
-    pub fn print_info(&self) {
-        for tx in self.deferred_pool.packing_pool.in_space(Space::Ethereum).iter() {
-            debug!("packing_txn: {:#?}", tx);
-        }
-    }
+    // pub fn print_info(&self) {
+    //     for tx in self.deferred_pool.packing_pool.in_space(Space::Ethereum).iter() {
+    //         debug!("packing_txn: {:#?}", tx);
+    //     }
+    // }
 
     pub fn clear(&mut self) {
         self.deferred_pool.clear();
