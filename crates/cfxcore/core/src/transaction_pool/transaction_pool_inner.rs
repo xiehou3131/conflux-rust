@@ -317,13 +317,7 @@ impl DeferredPool {
             let hash = tx.hash();
             let gas_price = *tx.gas_price();
             let mut idx: Option<usize> = None;
-            if let Some(value) = self.gas_price_map.get(&hash) {
-                if gas_price > *value {
-                    self.gas_price_map.insert(hash, gas_price);
-                    sorted_remove(& mut self.gas_price_sorted_vec, gas_price);
-                    idx = Some(sorted_insert(& mut self.gas_price_sorted_vec, gas_price));
-                }
-            } else {
+            if let None = self.gas_price_map.get(&hash) {
                 self.gas_price_map.insert(hash, gas_price);
                 idx = Some(sorted_insert(& mut self.gas_price_sorted_vec, gas_price));
             }
@@ -335,7 +329,8 @@ impl DeferredPool {
                     self.arb_proxy_gas_price = gas_price;
                 }
                 else {
-                    debug!("{}", value);
+                    debug!("inserted idx; {}", value);
+                    debug!("vec: {:#?}", self.gas_price_sorted_vec);
                 }
             }
         }     
