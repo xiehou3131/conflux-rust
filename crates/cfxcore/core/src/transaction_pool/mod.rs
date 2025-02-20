@@ -1064,11 +1064,11 @@ impl TransactionPool {
         &self, best_info: Arc<BestInformation>,
     ) -> StateDbResult<()> {
         {
-            let mut inner =
-                self.inner.write_with_metric(&INSERT_TXS_ENQUEUE_LOCK);
-            let inner_ref = &mut *inner;
+            // let mut inner =
+            //     self.inner.write_with_metric(&INSERT_TXS_ENQUEUE_LOCK);
+            // let inner_ref = &mut *inner;
             debug!("before notify new best info");
-            inner_ref.print_info();
+            // inner_ref.print_info();
         }
 
         let mut set_tx_buffer = self.set_tx_requests.lock();
@@ -1148,11 +1148,11 @@ impl TransactionPool {
         );
 
         {
-            let mut inner =
-                self.inner.write_with_metric(&INSERT_TXS_ENQUEUE_LOCK);
-            let inner_ref = &mut *inner;
+            // let mut inner =
+            //     self.inner.write_with_metric(&INSERT_TXS_ENQUEUE_LOCK);
+            // let inner_ref = &mut *inner;
             debug!("after notify best info");
-            inner_ref.print_info();
+            // inner_ref.print_info();
         }
 
         Ok(())
