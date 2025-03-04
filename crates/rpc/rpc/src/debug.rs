@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use cfx_rpc_eth_api::DebugApiServer;
 use cfx_rpc_eth_types::{BlockNumber, Bundle, SimulationContext,TransactionRequest};
 use cfx_rpc_utils::error::jsonrpsee_error_helpers::invalid_params_msg;
-use cfx_types::{AddressSpaceUtil, Space, H256, U256};
+use cfx_types::{AddressSpaceUtil, Space, H256, U256, H160};
 use cfxcore::{
     errors::Error as CoreError, ConsensusGraph, ConsensusGraphTrait,
     SharedConsensusGraph,
@@ -19,6 +19,7 @@ use primitives::{
     Block, BlockHashOrEpochNumber, BlockHeaderBuilder, EpochNumber,
 };
 use std::sync::Arc;
+use std::collections::HashMap;
 
 pub struct DebugApi {
     consensus: SharedConsensusGraph,
